@@ -49,6 +49,7 @@ CREATE TABLE PELICULA (
     fecha_creacion DATE NOT NULL,
     estado VARCHAR(15) DEFAULT 'Activo',
     url_imagen VARCHAR(500),
+    entradas_vendidas INT DEFAULT 0,
     id_cine NUMERIC(6) NOT NULL,
     id_categoria NUMERIC(6),
     FOREIGN KEY (id_cine) REFERENCES CINE(id) ON DELETE CASCADE,
