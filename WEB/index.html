@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>TiketFilm</title><link rel="stylesheet" href="css/styles.css"></head>
+<body>
+<div class="banner"><h1>TIKETFILM</h1><div class="user-info" id="userInfo"></div><button class="btn-cuenta" onclick="abrirCuenta()">Cuenta</button></div>
+<div class="main">
+  <div class="panel panel-izq">
+    <div class="panel-header">PELÍCULAS</div>
+    <div class="movie-list" id="movieList"></div>
+  </div>
+  <div class="panel panel-der">
+    <div class="carousel" id="carousel" onclick="verDetallesAnuncio()"><div class="placeholder">Cargando...</div></div>
+  </div>
+</div>
+<div class="modal-overlay" id="modalDetalles"><div class="modal" id="modalContent"></div></div>
+<div class="modal-overlay" id="modalCuenta"><div class="modal" id="cuentaContent"></div></div>
+<script src="js/datos.js"></script>
+<script>
+var anuncioIdx=0;
+
+async function init(){
+  await DB.cargar();
+  renderUser(); renderPelis(); carrusel();
+}
+function renderUser(){var u=DB.usuarioLogueado;document.getElementById('userInfo').textContent=u?'Conectado: '+u.nombre+' ('+u.rol+')':'';}
+
+function renderPelis(){
+  var h='';
+  for(var i=0;i<DB.peliculas.length;i++){
+    var p=DB.peliculas[i];
+    h+='<div class="movie-card" onclick="mostrarDetalles('+i+')"><img src="'+(p.urlImagen||'')+'" alt="'+p.nombre+'" onerror="this.style.display=\'none\'"><div class="info"><h3>'+p.nombre+'</h3><p>'+trunc(p.descripcion,150)+'</p><span class="cine">'+(p.cine_nombre||'')+'</span></div></div>';
+  }
+  document.getElementById('movieList').innerHTML=h;
+}
+
+function mostrarDetalles(idx){
+  var p=DB.peliculas[idx];if(!p)return;
+  var h='<button class="close" onclick="cM(\'modalDetalles\')">&times;</button><h2>'+p.nombre+'</h2>';
+  if(p.urlImagen)h+='<img src="'+p.urlImagen+'" alt="'+p.nombre+'" onerror="this.style.display=\'none\'">';
+  h+='<div class="row"><span class="lbl">Descripción:</span>'+p.descripcion+'</div>';
+  h+='<div class="row"><span class="lbl">Precio:</span>'+p.precio+' €</div>';
+  h+='<div class="row"><span class="lbl">Fecha:</span>'+p.fecha_creacion+'</div>';
+  h+='<div class="row"><span class="lbl">Cine:</span>'+(p.cine_nombre||'N/A')+'</div>';
+  h+='<div class="row"><span class="lbl">Categoría:</span>'+p.nombre_categoria+'</div>';
+  var quedan = p.aforo - (p.entradas_vendidas||0);
+  h+='<div class="row"><span class="lbl">Aforo:</span>'+(p.entradas_vendidas||0)+' / '+p.aforo+' ('+quedan+' disponibles)</div>';
+  h+='<hr style="border-color:var(--borde);margin:14px 0">';
+  h+='<div style="display:flex;gap:10px;align-items:center"><label style="font-size:13px;color:var(--label);white-space:nowrap">Cantidad:</label>';
+  h+='<input type="number" id="cantEntradas" value="1" min="1" max="'+quedan+'" style="width:80px;padding:8px;background:var(--claro);color:var(--texto);border:1px solid var(--borde);border-radius:3px;font-size:14px;text-align:center">';
+  h+='<button class="btn-primary" style="flex:1" onclick="comprarEntrada('+idx+')">Comprar</button></div>';
+  h+='<div id="msgCompra" style="margin-top:10px;font-size:13px;text-align:center"></div>';
+  document.getElementById('modalContent').innerHTML=h;
+  document.getElementById('modalDetalles').classList.add('active');
+}
+
+async function comprarEntrada(idx){
+  var p=DB.peliculas[idx], cant=parseInt(document.getElementById('cantEntradas').value);
+  if(!cant||cant<1){document.getElementById('msgCompra').innerHTML='<span style="color:#e74c3c">Cantidad inválida</span>';return;}
+  var r=await DB.comprar(p.pk,cant);
+  var el=document.getElementById('msgCompra');
+  if(r.ok){
+    p.entradas_vendidas=r.total;
+    el.innerHTML='<span style="color:#2ecc71">¡Comprado! '+cant+' entrada(s) por '+r.precio_total+' €</span>';
+    document.getElementById('cantEntradas').max = p.aforo - r.total;
+    setTimeout(function(){cM('modalDetalles');},2000);
+  }else{
+    el.innerHTML='<span style="color:#e74c3c">'+(r.error||'Error')+'</span>';
+  }
+}
+
+function verDetallesAnuncio(){
+  var act=[];for(var i=0;i<DB.anuncios.length;i++)if(DB.anuncios[i].activo)act.push(DB.anuncios[i]);
+  if(!act.length)return;var a=act[anuncioIdx%act.length];
+  for(var i=0;i<DB.peliculas.length;i++){if(DB.peliculas[i].pk==a.pk_pelicula){mostrarDetalles(i);return;}}
+}
+
+function carrusel(){
+  actCarrusel();setInterval(function(){
+    var act=[];for(var i=0;i<DB.anuncios.length;i++)if(DB.anuncios[i].activo)act.push(DB.anuncios[i]);
+    if(act.length){anuncioIdx=(anuncioIdx+1)%act.length;actCarrusel();}
+  },5000);
+}
+
+function actCarrusel(){
+  var el=document.getElementById('carousel'),act=[];
+  for(var i=0;i<DB.anuncios.length;i++)if(DB.anuncios[i].activo)act.push(DB.anuncios[i]);
+  if(!act.length){el.innerHTML='<div class="placeholder">No hay anuncios</div>';return;}
+  var a=act[anuncioIdx%act.length];
+  if(a.urlImagen)el.innerHTML='<img src="'+a.urlImagen+'" alt="'+a.peli_nombre+'">';
+  else el.innerHTML='<div class="placeholder">'+(a.peli_nombre||'Anuncio #'+a.pk)+'</div>';
+}
+
+function cM(id){document.getElementById(id).classList.remove('active');}
+
+function abrirCuenta(){
+  var u=DB.usuarioLogueado,h='<button class="close" onclick="cM(\'modalCuenta\')">&times;</button>';
+  if(u){
+    h+='<div class="profile"><div class="avatar">&#128100;</div><div class="name">'+u.nombre+'</div><div class="role">'+u.rol+'</div><hr style="border-color:var(--borde);margin:12px 0">';
+    h+='<div class="info-row"><span class="lbl">DNI</span><span>'+u.dni+'</span></div>';
+    h+='<div class="info-row"><span class="lbl">Email</span><span>'+u.email+'</span></div>';
+    h+='<div class="info-row"><span class="lbl">Teléfono</span><span>'+u.telefono+'</span></div>';
+    h+='<div class="cuenta-btns"><button class="btn-primary" onclick="cerrarSesion()">Cerrar Sesión</button></div></div>';
+  }else{
+    h+='<h2>Iniciar Sesión</h2><div class="form-group"><label>DNI</label><input id="loginDni"></div><div class="form-group"><label>Contraseña</label><input type="password" id="loginPass"></div>';
+    h+='<button class="btn-primary" onclick="hacerLogin()">Iniciar Sesión</button><button class="btn-link" onclick="mostrarRegistro()">Crear una cuenta nueva</button>';
+  }
+  document.getElementById('cuentaContent').innerHTML=h;
+  document.getElementById('modalCuenta').classList.add('active');
+}
+
+async function hacerLogin(){
+  var d=document.getElementById('loginDni').value.trim(),p=document.getElementById('loginPass').value;
+  if(!d||!p){alert('Rellene todos los campos.');return;}
+  var u=await DB.login(d,p);
+  if(u){DB.usuarioLogueado=u;renderUser();abrirCuenta();}
+  else alert('DNI o contraseña incorrectos.');
+}
+
+function mostrarRegistro(){
+  var h='<button class="close" onclick="cM(\'modalCuenta\')">&times;</button><h2>Crear Cuenta</h2>';
+  h+='<div class="form-group"><label>DNI</label><input id="regDni"></div><div class="form-group"><label>Nombre</label><input id="regNom"></div>';
+  h+='<div class="form-group"><label>Correo</label><input id="regEmail"></div><div class="form-group"><label>Contraseña</label><input type="password" id="regPass"></div>';
+  h+='<div class="form-group"><label>Repetir Contraseña</label><input type="password" id="regPass2"></div><div class="form-group"><label>Teléfono</label><input id="regTel"></div>';
+  h+='<button class="btn-primary" onclick="hacerRegistro()">Registrarse</button><button class="btn-link" onclick="abrirCuenta()">← Volver al inicio de sesión</button>';
+  document.getElementById('cuentaContent').innerHTML=h;
+}
+
+async function hacerRegistro(){
+  var d=document.getElementById('regDni').value.trim(),n=document.getElementById('regNom').value.trim(),e=document.getElementById('regEmail').value.trim();
+  var p=document.getElementById('regPass').value,p2=document.getElementById('regPass2').value,t=document.getElementById('regTel').value.trim();
+  if(!d||!n||!e||!p||!t){alert('Todos los campos obligatorios.');return;}
+  if(p!==p2){alert('Contraseñas no coinciden.');return;}
+  var u=await DB.registrar(d,n,e,p,t);
+  if(!u){alert('Error al registrar.');return;}
+  if(u.error==='duplicado'){alert('DNI ya registrado.');return;}
+  DB.usuarioLogueado=u;renderUser();abrirCuenta();
+}
+
+function cerrarSesion(){DB.usuarioLogueado=null;renderUser();cM('modalCuenta');}
+function trunc(t,n){return t.length>n?t.substring(0,n-3)+'...':t;}
+document.getElementById('modalDetalles').addEventListener('click',function(e){if(e.target===this)cM('modalDetalles');});
+document.getElementById('modalCuenta').addEventListener('click',function(e){if(e.target===this)cM('modalCuenta');});
+init();
+</script>
+</body>
+</html>
